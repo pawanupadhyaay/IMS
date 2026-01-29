@@ -1,45 +1,7 @@
 const { Product, validateProduct } = require("../models/Product");
-const { logHistory } = require("../utils/historyLogger");
-const upload = require("../config/multer");
-
-// @desc    Upload product images
-// @route   POST /api/products/upload-images
-// @access  Private
-const uploadImages = async (req, res) => {
-  try {
-    console.log('Upload request received');
-    console.log('Files in request:', req.files ? req.files.length : 0);
-
-    if (!req.files || req.files.length === 0) {
-      console.log('No files found in request');
-      return res.status(400).json({ message: 'No files uploaded' });
-    }
-
-    // Performance optimization: Process files efficiently
-    const uploadedImages = req.files.map(file => {
-      // Log file sizes for monitoring
-      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
-      console.log(`Uploaded: ${file.originalname} (${fileSizeMB}MB) -> ${file.filename}`);
-
-      return {
-        url: `http://localhost:5000/uploads/${file.filename}`,
-        altText: file.originalname,
-        filename: file.filename,
-      };
-    });
-
-    console.log('Upload successful, returning:', uploadedImages.length, 'images');
-
-    res.json({
-      success: true,
-      data: uploadedImages,
-      message: `${req.files.length} image(s) uploaded successfully`
-    });
-  } catch (error) {
-    console.error('Image upload error:', error);
-    res.status(500).json({ message: error.message });
-  }
-};
+const DashboardStats = require("../models/DashboardStats");
+const { logActivity } = require("../utils/logActivity");
+const { migrateLegacyImages, migrateLegacyImagesInline } = require("../utils/migrateLegacyImages");
 
 // @desc    Get all products with filters and pagination
 // @route   GET /api/products
@@ -58,35 +20,54 @@ const getProducts = async (req, res) => {
 
     // Build filter
     const filter = {};
-    
-    // Search has priority - if search is provided, use it instead of individual filters
-    if (search && search.trim()) {
-      const searchTerm = search.trim();
+    // Use exact match for brand if possible (much faster than regex)
+    if (brand) {
+      // Try exact match first, fallback to case-insensitive if needed
+      filter.brand = new RegExp(`^${brand}$`, "i");
+    }
+    if (category) {
+      filter.category = new RegExp(`^${category}$`, "i");
+    }
+    if (search) {
+      // Optimize search: use text index if available, otherwise regex
+      const searchRegex = new RegExp(search, "i");
       filter.$or = [
-        { brand: { $regex: searchTerm, $options: "i" } },
-        { sku: { $regex: searchTerm, $options: "i" } },
-        { category: { $regex: searchTerm, $options: "i" } },
-        { description: { $regex: searchTerm, $options: "i" } },
+        { brand: searchRegex },
+        { sku: searchRegex },
+        { category: searchRegex },
+        { description: searchRegex },
       ];
-    } else {
-      // Apply individual filters only if search is not provided
-      if (brand && brand.trim()) {
-        filter.brand = { $regex: brand.trim(), $options: "i" };
-      }
-      if (category && category.trim()) {
-        filter.category = { $regex: category.trim(), $options: "i" };
-      }
     }
 
     // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Get products
+    // Get products with projection - only fetch fields needed for list view
+    // Include legacy fields for migration: imageUrl, image.url
+    // This reduces payload size significantly (especially for 10k+ products)
+    const projection = "brand sku category inventory price images imageUrl image.url createdAt";
     const products = await Product.find(filter)
+      .select(projection)
       .sort({ [sortBy]: sortOrder === "asc" ? 1 : -1 })
       .skip(skip)
       .limit(parseInt(limit))
       .lean();
+    
+    // Lazy migration: Migrate legacy images to product.images[] (non-blocking)
+    // This ensures old products show images without breaking unified pipeline
+    products.forEach(product => {
+      // Inline migration for immediate response
+      const migrated = migrateLegacyImagesInline(product)
+      Object.assign(product, migrated)
+      
+      // Background persistence (non-blocking)
+      migrateLegacyImages(product)
+    })
+    
+    // Debug: Log to verify images are included
+    if (products.length > 0) {
+      console.log('GET /api/products - Sample product images:', products[0].images);
+    }
 
     // Get total count
     const total = await Product.countDocuments(filter);
@@ -111,10 +92,25 @@ const getProducts = async (req, res) => {
 // @access  Private
 const getProduct = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
+    // Include legacy fields for migration: imageUrl, image.url
+    const product = await Product.findById(req.params.id)
+      .select('brand sku category inventory price images imageUrl image.url description metafields createdAt updatedAt')
+      .lean();
+    
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
+
+    // Lazy migration: Migrate legacy images to product.images[] (non-blocking)
+    // This ensures old products show images without breaking unified pipeline
+    const migrated = migrateLegacyImagesInline(product)
+    Object.assign(product, migrated)
+    
+    // Background persistence (non-blocking)
+    migrateLegacyImages(product)
+
+    // Debug: Log to verify images are included
+    console.log('GET /api/products/:id - Product images:', product.images);
     res.json({ success: true, data: product });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -126,78 +122,177 @@ const getProduct = async (req, res) => {
 // @access  Private
 const createProduct = async (req, res) => {
   try {
-    console.log('Create product request:', req.body);
-
-    const productData = req.body;
-
-    // Validate product data
-    const { error } = validateProduct(productData);
+    const { error } = validateProduct(req.body);
     if (error) {
-      console.log('Validation error:', error.details[0].message);
       return res.status(400).json({ message: error.details[0].message });
     }
 
     const product = await Product.create({
-      ...productData,
+      ...req.body,
       user: req.user.id,
     });
 
-    // Log history (non-blocking)
-    logHistory(req, "CREATE", product);
+    // Debug: Log to verify images are saved and returned
+    console.log('POST /api/products - Created product images:', product.images);
 
-    console.log('Product created successfully:', product._id);
+    // Clear brands cache when new product is created
+    clearBrandsCache();
+
+    // Trigger background stats update
+    updateDashboardStatsInBackground();
+
+    // Log activity (non-blocking)
+    console.log('Activity log triggered: CREATE', product.sku || 'N/A')
+    logActivity({
+      actionType: 'CREATE',
+      brand: product.brand || '',
+      sku: product.sku || '',
+      productId: product._id,
+      adminId: req.user.id,
+      adminName: req.user.name || 'Unknown',
+      adminEmail: req.user.email || '',
+    });
+
     res.status(201).json({ success: true, data: product });
   } catch (error) {
-    console.error('Create product error:', error);
     res.status(500).json({ message: error.message });
   }
 };
 
-// @desc    Update product
+// @desc    Update product (full update)
 // @route   PUT /api/products/:id
 // @access  Private
 const updateProduct = async (req, res) => {
   try {
-    console.log('Update product request:', req.params.id, req.body);
-
-    const productData = req.body;
-
-    // Validate product data
-    const { error } = validateProduct(productData);
+    const { error } = validateProduct(req.body);
     if (error) {
-      console.log('Validation error:', error.details[0].message);
       return res.status(400).json({ message: error.details[0].message });
-    }
-
-    // Get old product for comparison
-    const oldProduct = await Product.findById(req.params.id);
-    if (!oldProduct) {
-      return res.status(404).json({ message: "Product not found" });
     }
 
     const product = await Product.findByIdAndUpdate(
       req.params.id,
-      productData,
+      req.body,
       {
         new: true,
         runValidators: true,
       }
     );
 
-    // Track changes
-    const changes = {};
-    if (oldProduct.brand !== product.brand) changes.brand = { from: oldProduct.brand, to: product.brand };
-    if (oldProduct.sku !== product.sku) changes.sku = { from: oldProduct.sku, to: product.sku };
-    if (oldProduct.inventory !== product.inventory) changes.inventory = { from: oldProduct.inventory, to: product.inventory };
-    if (oldProduct.price !== product.price) changes.price = { from: oldProduct.price, to: product.price };
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
 
-    // Log history (non-blocking)
-    logHistory(req, "UPDATE", product, changes);
+    // Clear brands cache if brand was updated
+    if (req.body.brand !== undefined) {
+      clearBrandsCache();
+    }
 
-    console.log('Product updated successfully:', product._id);
+    // Trigger background stats update
+    updateDashboardStatsInBackground();
+
+    // Debug: Log to verify images are updated and returned
+    console.log('PUT /api/products/:id - Updated product images:', product.images);
+
+    // Log activity (non-blocking)
+    console.log('Activity log triggered: UPDATE', product.sku || 'N/A')
+    logActivity({
+      actionType: 'UPDATE',
+      brand: product.brand || '',
+      sku: product.sku || '',
+      productId: product._id,
+      adminId: req.user.id,
+      adminName: req.user.name || 'Unknown',
+      adminEmail: req.user.email || '',
+    });
+
     res.json({ success: true, data: product });
   } catch (error) {
-    console.error('Update product error:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Partially update product (optimized for minimal payload)
+// @route   PATCH /api/products/:id
+// @access  Private
+const patchProduct = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+
+    // Validate only provided fields
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: "No fields to update" });
+    }
+
+    // Build update object with $set for partial updates
+    const updateObj = {};
+    const allowedFields = [
+      "brand",
+      "sku",
+      "category",
+      "inventory",
+      "price",
+      "description",
+      "metafields",
+      "images",
+      "image",
+    ];
+
+    for (const key of Object.keys(updates)) {
+      if (allowedFields.includes(key)) {
+        updateObj[key] = updates[key];
+      }
+    }
+
+    if (Object.keys(updateObj).length === 0) {
+      return res.status(400).json({ message: "No valid fields to update" });
+    }
+
+    // Perform partial update
+    const product = await Product.findByIdAndUpdate(
+      id,
+      { $set: updateObj },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    // Clear brands cache if brand was updated
+    if (updates.brand !== undefined) {
+      clearBrandsCache();
+    }
+
+    // Trigger background stats update
+    updateDashboardStatsInBackground();
+
+    // Debug: Log to verify images are updated
+    console.log('PATCH /api/products/:id - Updated images:', product.images);
+    console.log('PATCH /api/products/:id - Update object:', updateObj);
+
+    // Log activity (non-blocking)
+    console.log('Activity log triggered: UPDATE', product.sku || 'N/A')
+    logActivity({
+      actionType: 'UPDATE',
+      brand: product.brand || '',
+      sku: product.sku || '',
+      productId: product._id,
+      adminId: req.user.id,
+      adminName: req.user.name || 'Unknown',
+      adminEmail: req.user.email || '',
+    });
+
+    // Return full product (not just updated fields) to ensure images are included
+    res.json({ success: true, data: product });
+  } catch (error) {
+    // Handle duplicate SKU error
+    if (error.code === 11000) {
+      return res.status(400).json({ message: "SKU already exists" });
+    }
     res.status(500).json({ message: error.message });
   }
 };
@@ -207,31 +302,129 @@ const updateProduct = async (req, res) => {
 // @access  Private
 const deleteProduct = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const product = await Product.findByIdAndDelete(req.params.id);
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    // Log history before deletion (non-blocking)
-    logHistory(req, "DELETE", product);
+    // Clear brands cache when product is deleted
+    clearBrandsCache();
 
-    await Product.findByIdAndDelete(req.params.id);
+    // Trigger background stats update
+    updateDashboardStatsInBackground();
+
+    // Log activity (non-blocking) - log before product is deleted
+    console.log('Activity log triggered: DELETE', product.sku || 'N/A')
+    logActivity({
+      actionType: 'DELETE',
+      brand: product.brand || '',
+      sku: product.sku || '',
+      productId: product._id,
+      adminId: req.user.id,
+      adminName: req.user.name || 'Unknown',
+      adminEmail: req.user.email || '',
+    });
+
     res.json({ success: true, message: "Product deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
+// Simple in-memory cache for brands (cleared on product create/update/delete)
+let brandsCache = null;
+let brandsCacheTime = null;
+const BRANDS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 // @desc    Get unique brands
 // @route   GET /api/products/brands/list
 // @access  Private
 const getBrands = async (req, res) => {
   try {
+    // Return cached brands if available and not expired
+    const now = Date.now();
+    if (brandsCache && brandsCacheTime && (now - brandsCacheTime) < BRANDS_CACHE_TTL) {
+      return res.json({ success: true, data: brandsCache });
+    }
+
+    // Fetch brands from database (using index for faster query)
     const brands = await Product.distinct("brand", { brand: { $ne: "" } });
-    res.json({ success: true, data: brands.sort() });
+    const sortedBrands = brands.sort();
+
+    // Cache the result
+    brandsCache = sortedBrands;
+    brandsCacheTime = now;
+
+    res.json({ success: true, data: sortedBrands });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
+};
+
+// Helper function to clear brands cache (call after product create/update/delete)
+const clearBrandsCache = () => {
+  brandsCache = null;
+  brandsCacheTime = null;
+};
+
+// Background function to update dashboard stats (non-blocking)
+const updateDashboardStatsInBackground = async () => {
+  // Run in background without blocking the response
+  setImmediate(async () => {
+    try {
+      const inv = {
+        $convert: { input: "$inventory", to: "double", onError: 0, onNull: 0 },
+      };
+      const prc = {
+        $convert: { input: "$price", to: "double", onError: 0, onNull: 0 },
+      };
+
+      const stats = await Product.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalProducts: { $sum: 1 },
+            totalStock: { $sum: inv },
+            totalStoreValue: {
+              $sum: {
+                $multiply: [
+                  // Business rule: Σ(price of in-stock products)
+                  { $cond: [{ $gt: [inv, 0] }, prc, 0] },
+                  1
+                ]
+              }
+            },
+            outOfStockCount: {
+              $sum: {
+                $cond: [
+                  { $eq: [inv, 0] },
+                  1,
+                  0
+                ]
+              }
+            }
+          }
+        }
+      ]);
+
+      const result = stats[0] || {
+        totalProducts: 0,
+        totalStock: 0,
+        totalStoreValue: 0,
+        outOfStockCount: 0
+      };
+
+      await DashboardStats.updateStats({
+        totalProducts: result.totalProducts || 0,
+        totalStock: result.totalStock || 0,
+        totalStoreValue: Math.round((result.totalStoreValue || 0) * 100) / 100,
+        outOfStockCount: result.outOfStockCount || 0,
+      });
+    } catch (error) {
+      console.error("Background stats update failed:", error);
+      // Don't throw - this is background operation
+    }
+  });
 };
 
 module.exports = {
@@ -239,8 +432,8 @@ module.exports = {
   getProduct,
   createProduct,
   updateProduct,
+  patchProduct,
   deleteProduct,
   getBrands,
-  uploadImages,
 };
 

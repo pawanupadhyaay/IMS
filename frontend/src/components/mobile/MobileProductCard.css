@@ -1,0 +1,163 @@
+.mobile-product-card {
+  background: white;
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e0e0e0;
+  transition: transform 0.2s, box-shadow 0.2s;
+  touch-action: manipulation;
+}
+
+.mobile-product-card:active {
+  transform: scale(0.98);
+}
+
+.mobile-product-card.out-of-stock {
+  opacity: 0.7;
+  border-left: 4px solid #dc3545;
+}
+
+.mobile-product-top {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+  gap: 0.75rem;
+}
+
+.mobile-product-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.mobile-product-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+  gap: 0.5rem;
+}
+
+.mobile-product-brand {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #333;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-product-sku {
+  font-size: 0.875rem;
+  color: #666;
+  background: #f5f5f5;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.mobile-product-category {
+  font-size: 0.875rem;
+  color: #666;
+  margin-bottom: 0.75rem;
+}
+
+.mobile-product-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.mobile-product-detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.detail-label {
+  font-size: 0.875rem;
+  color: #666;
+  font-weight: 500;
+}
+
+.detail-value {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.detail-value.out-of-stock {
+  color: #dc3545;
+}
+
+.mobile-product-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.mobile-action-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-height: 44px;
+  min-width: 44px;
+  touch-action: manipulation;
+}
+
+.mobile-action-btn.view-btn {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.mobile-action-btn.view-btn:active {
+  background: #bbdefb;
+}
+
+.mobile-action-btn.edit-btn {
+  background: #fff3e0;
+  color: #f57c00;
+}
+
+.mobile-action-btn.edit-btn:active {
+  background: #ffe0b2;
+}
+
+.mobile-action-btn.more-btn {
+  flex: 0 0 auto;
+  background: #f5f5f5;
+  color: #666;
+  padding: 0.75rem;
+  min-width: 44px;
+}
+
+.mobile-action-btn.more-btn:active {
+  background: #e0e0e0;
+}
+
+.more-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+  font-weight: 600;
+}
+
+.action-icon {
+  font-size: 1.125rem;
+}
+

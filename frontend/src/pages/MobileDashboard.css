@@ -1,0 +1,42 @@
+.mobile-dashboard {
+  min-height: 100vh;
+  background-color: #f5f5f5;
+  padding-bottom: 6rem; /* Space for FAB */
+}
+
+.mobile-dashboard-main {
+  min-height: calc(100vh - 200px);
+}
+
+.mobile-loading {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #666;
+  font-size: 1rem;
+}
+
+/* Hide desktop elements on mobile */
+@media (max-width: 768px) {
+  .dashboard-header,
+  .dashboard-controls,
+  .stats-cards,
+  .table-container,
+  .pagination {
+    display: none !important;
+  }
+}
+
+/* Hide mobile elements on desktop */
+@media (min-width: 769px) {
+  .mobile-dashboard,
+  .mobile-header,
+  .mobile-stats-bar-container,
+  .mobile-search-bar,
+  .mobile-product-list,
+  .mobile-fab-container,
+  .mobile-filter-overlay,
+  .mobile-modal-overlay {
+    display: none !important;
+  }
+}
+

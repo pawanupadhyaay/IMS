@@ -67,7 +67,6 @@ const login = async (req, res) => {
     }
 
     const token = user.generateToken();
-
     res.json({
       success: true,
       token,
@@ -103,24 +102,9 @@ const getMe = async (req, res) => {
   }
 };
 
-// @desc    Logout user
-// @route   POST /api/auth/logout
-// @access  Private
-const logout = async (req, res) => {
-  try {
-    res.json({
-      success: true,
-      message: "Logged out successfully",
-    });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
 module.exports = {
   register,
   login,
-  logout,
   getMe,
 };
 

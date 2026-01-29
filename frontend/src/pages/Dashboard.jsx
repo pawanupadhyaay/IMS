@@ -1,122 +1,105 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useMemo } from 'react'
 import { useContext } from 'react'
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
+import { useDebounce } from '../hooks/useDebounce'
+import { useIsMobile } from '../hooks/useMediaQuery'
 import { AuthContext } from '../context/AuthContext'
-import { getDashboardStats } from '../services/dashboardService'
-import { getProducts, getBrands, deleteProduct } from '../services/productService'
+import { getDisplayBrand } from '../utils/brandUtils'
+import { useProducts, useBrands, useDeleteProduct } from '../hooks/useProducts'
+import { useDashboardStats } from '../hooks/useDashboard'
 import { exportToCSV } from '../services/exportService'
 import InventoryTable from '../components/InventoryTable'
 import StatsCards from '../components/StatsCards'
 import ProductModal from '../components/ProductModal'
+import DeleteConfirmModal from '../components/DeleteConfirmModal'
+// Mobile components
+import MobileHeader from '../components/mobile/MobileHeader'
+import MobileStatsBar from '../components/mobile/MobileStatsBar'
+import MobileSearchBar from '../components/mobile/MobileSearchBar'
+import MobileProductList from '../components/mobile/MobileProductList'
+import MobileFAB from '../components/mobile/MobileFAB'
+import MobileFilterSheet from '../components/mobile/MobileFilterSheet'
+import MobileProductModal from '../components/mobile/MobileProductModal'
+import MobileActionSheet from '../components/mobile/MobileActionSheet'
 import './Dashboard.css'
+import './MobileDashboard.css'
 
 const Dashboard = () => {
   const { user, logout } = useContext(AuthContext)
-  const [stats, setStats] = useState(null)
-  const [products, setProducts] = useState([])
-  const [brands, setBrands] = useState([])
-  const [brandsLoaded, setBrandsLoaded] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const navigate = useNavigate()
+  const isMobile = useIsMobile()
   const [filters, setFilters] = useState({
     brand: '',
     search: '',
     page: 1,
   })
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 50,
-    total: 0,
-    pages: 0,
-  })
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [showModal, setShowModal] = useState(false)
+  const [showFilterSheet, setShowFilterSheet] = useState(false)
   const [modalMode, setModalMode] = useState('view') // view, edit, create
-  const [debouncedFilters, setDebouncedFilters] = useState(filters)
+  // Mobile action sheet
+  const [showActionSheet, setShowActionSheet] = useState(false)
+  const [actionSheetProduct, setActionSheetProduct] = useState(null)
+  // Shared delete confirmation modal
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteProduct, setDeleteProduct] = useState(null)
 
-  // Debounce filter changes to avoid too many API calls
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedFilters(filters)
-    }, 500) // 500ms debounce for better UX
+  // Debounce search input (500ms)
+  const debouncedSearch = useDebounce(filters.search, 500)
 
-    return () => clearTimeout(timer)
-  }, [filters])
+  // Build query filters
+  const queryFilters = useMemo(() => ({
+    page: filters.page,
+    limit: 50,
+    brand: filters.brand || undefined,
+    search: debouncedSearch || undefined,
+  }), [filters.page, filters.brand, debouncedSearch])
 
-  // Load brands only once on component mount
-  useEffect(() => {
-    loadBrands()
-    loadStats()
-  }, [])
+  // React Query hooks - automatic caching, background refetching
+  const { data: productsData, isLoading: productsLoading } = useProducts(queryFilters)
+  const { data: brandsData } = useBrands()
+  const { data: statsData, isLoading: statsLoading, isError: statsError, error: statsErrorObj } = useDashboardStats()
+  const deleteProductMutation = useDeleteProduct()
 
-  // Load products when filters change
-  useEffect(() => {
-    if (debouncedFilters.page > 0) { // Only load if we have valid filters
-      loadProducts()
-    }
-  }, [debouncedFilters])
-
-  const loadBrands = async () => {
-    try {
-      const brandsData = await getBrands()
-      setBrands(brandsData.data)
-      setBrandsLoaded(true)
-    } catch (error) {
-      console.error('Error loading brands:', error)
-    }
+  // Extract data with safe defaults
+  const products = productsData?.data || []
+  const pagination = productsData?.pagination || { page: 1, limit: 50, total: 0, pages: 0 }
+  const brands = brandsData?.data || []
+  // Always provide a stats object so KPI cards never disappear (prevents "nothing shows")
+  const stats = statsData?.data || {
+    totalProducts: 0,
+    totalStock: 0,
+    totalStoreValue: 0,
+    outOfStockCount: 0,
+  }
+  if (statsError) {
+    console.error('Dashboard stats failed:', statsErrorObj)
   }
 
-  const loadStats = async () => {
-    try {
-      const statsData = await getDashboardStats()
-      setStats(statsData.data)
-    } catch (error) {
-      console.error('Error loading stats:', error)
-    }
+  const handleFilterChange = (key, value) => {
+    setFilters((prev) => {
+      if (prev[key] === value) return prev
+      return {
+        ...prev,
+        [key]: value,
+        page: 1, // Reset to first page on filter change
+      }
+    })
   }
-
-  const loadProducts = async () => {
-    setLoading(true)
-    try {
-      // Build query params - only include non-empty values
-      const params = {
-        page: debouncedFilters.page,
-        limit: 50,
-      }
-
-      // Only add search if it has a value
-      if (debouncedFilters.search && debouncedFilters.search.trim()) {
-        params.search = debouncedFilters.search.trim()
-      }
-
-      // Only add brand filter if search is not active
-      if (!debouncedFilters.search && debouncedFilters.brand && debouncedFilters.brand.trim()) {
-        params.brand = debouncedFilters.brand.trim()
-      }
-
-      console.log('Loading products with params:', params)
-
-      const productsData = await getProducts(params)
-
-      setProducts(productsData.data)
-      setPagination(productsData.pagination)
-    } catch (error) {
-      console.error('Error loading products:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleFilterChange = useCallback((key, value) => {
-    setFilters((prev) => ({
-      ...prev,
-      [key]: value,
-      page: key === 'page' ? value : 1, // Reset to first page on filter change (except for page changes)
-    }))
-  }, [])
 
   const handlePageChange = (newPage) => {
     setFilters((prev) => ({ ...prev, page: newPage }))
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const handleLoadMore = () => {
+    if (pagination.page < pagination.pages) {
+      handlePageChange(pagination.page + 1)
+    }
+  }
+
+  const handleClearFilters = () => {
+    setFilters({ brand: '', search: '', page: 1 })
   }
 
   const handleViewProduct = (product) => {
@@ -137,32 +120,58 @@ const Dashboard = () => {
     setShowModal(true)
   }
 
-  const handleDeleteProduct = async (id) => {
-    try {
-      await deleteProduct(id)
-      // Reload all data to keep stats updated
-      loadStats()
-      loadProducts()
-    } catch (error) {
-      console.error('Error deleting product:', error)
-      alert('Failed to delete product')
+  // Unified delete handler - opens confirmation modal
+  const handleDeleteClick = (product) => {
+    setDeleteProduct(product)
+    setShowDeleteConfirm(true)
+  }
+
+  // Confirmed delete - calls API and updates UI
+  const handleConfirmDelete = async () => {
+    if (deleteProduct && deleteProduct._id) {
+      try {
+        await deleteProductMutation.mutateAsync(deleteProduct._id)
+        // React Query automatically updates cache and refetches
+        setShowDeleteConfirm(false)
+        setDeleteProduct(null)
+        // Also close action sheet if open
+        setShowActionSheet(false)
+        setActionSheetProduct(null)
+      } catch (error) {
+        console.error('Error deleting product:', error)
+        alert('Failed to delete product')
+      }
+    }
+  }
+
+  const handleCancelDelete = () => {
+    setShowDeleteConfirm(false)
+    setDeleteProduct(null)
+  }
+
+  // Mobile-specific handlers
+  const handleMoreClick = (product) => {
+    setActionSheetProduct(product)
+    setShowActionSheet(true)
+  }
+
+  const handleActionSheetDelete = () => {
+    if (actionSheetProduct) {
+      handleDeleteClick(actionSheetProduct)
     }
   }
 
   const handleModalClose = () => {
     setShowModal(false)
     setSelectedProduct(null)
-    // Reload all data after modal operations to keep stats current
-    loadStats()
-    loadBrands()
-    loadProducts()
+    // No need to reload - React Query handles cache updates
   }
 
   const handleExportCSV = async () => {
     try {
       await exportToCSV({
         brand: filters.brand || undefined,
-        search: filters.search || undefined,
+        search: debouncedSearch || undefined,
       })
     } catch (error) {
       console.error('Error exporting CSV:', error)
@@ -170,67 +179,110 @@ const Dashboard = () => {
     }
   }
 
+  const loading = productsLoading && products.length === 0
+  const hasMore = pagination.page < pagination.pages
+
+  // Mobile Layout
+  if (isMobile) {
+    return (
+      <div className="mobile-dashboard">
+        <MobileHeader
+          user={user}
+          onLogout={logout}
+          onCreateProduct={handleCreateProduct}
+          onExportCSV={handleExportCSV}
+        />
+        
+        <MobileStatsBar stats={stats} />
+        
+        <MobileSearchBar
+          value={filters.search}
+          onChange={(value) => handleFilterChange('search', value)}
+          onFilterClick={() => setShowFilterSheet(true)}
+        />
+
+        <main className="mobile-dashboard-main">
+          {loading && products.length === 0 ? (
+            <div className="mobile-loading">Loading...</div>
+          ) : (
+            <MobileProductList
+              products={products}
+              onView={handleViewProduct}
+              onEdit={handleEditProduct}
+              onMoreClick={handleMoreClick}
+              loading={productsLoading}
+              onLoadMore={handleLoadMore}
+              hasMore={hasMore}
+            />
+          )}
+        </main>
+
+        <MobileFAB
+          onCreateProduct={handleCreateProduct}
+          onExportCSV={handleExportCSV}
+        />
+
+        <MobileFilterSheet
+          isOpen={showFilterSheet}
+          onClose={() => setShowFilterSheet(false)}
+          brands={brands}
+          filters={filters}
+          onFilterChange={handleFilterChange}
+          onClearFilters={handleClearFilters}
+        />
+
+        <MobileActionSheet
+          isOpen={showActionSheet}
+          onClose={() => {
+            setShowActionSheet(false)
+            setActionSheetProduct(null)
+          }}
+          onDelete={handleActionSheetDelete}
+        />
+
+        <DeleteConfirmModal
+          isOpen={showDeleteConfirm}
+          onClose={handleCancelDelete}
+          onConfirm={handleConfirmDelete}
+          product={deleteProduct}
+        />
+
+        {showModal && (
+          <MobileProductModal
+            product={selectedProduct}
+            mode={modalMode}
+            onClose={handleModalClose}
+            onSave={handleModalClose}
+            brands={brands}
+          />
+        )}
+      </div>
+    )
+  }
+
+  // Desktop Layout (unchanged)
   return (
     <div className="dashboard">
       <header className="dashboard-header">
-        <div className="header-container">
-          {/* Logo Section */}
-          <div className="logo-section">
-            <Link to="/dashboard" className="logo-link">
-              <div className="logo">
-                <div className="logo-icon">⏰</div>
-                <div className="logo-text">
-                  <h1>Samay</h1>
-                  <span>Watch IMS</span>
-                </div>
-              </div>
-            </Link>
-          </div>
-
-          {/* Navigation Section */}
-          <nav className="header-nav">
-            <Link to="/dashboard" className="nav-link active">
-              <span className="nav-icon">📊</span>
-              Dashboard
-            </Link>
-            <Link to="/history" className="nav-link">
-              <span className="nav-icon">📋</span>
-              Histories
-            </Link>
-          </nav>
-
-          {/* User Section */}
-          <div className="user-section">
-            <div className="user-info">
-              <div className="user-avatar">
-                <span className="avatar-icon">👤</span>
-              </div>
-              <div className="user-details">
-                <span className="welcome-text">Welcome back</span>
-                <span className="user-name">{user?.name}</span>
-              </div>
-            </div>
-            <div className="header-actions">
-              <button onClick={logout} className="logout-button">
-                <span className="logout-icon">🚪</span>
-                <span className="logout-text">Logout</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Mobile Menu Toggle */}
-          <div className="mobile-menu-toggle">
-            <button className="menu-toggle-btn">
-              <span className="hamburger-line"></span>
-              <span className="hamburger-line"></span>
-              <span className="hamburger-line"></span>
+        <div className="header-content">
+          <h1>Samay Watch IMS</h1>
+          <div className="header-actions">
+            <button
+              onClick={() => navigate('/activity-history')}
+              className="btn-activity-history"
+            >
+              Activity History
+            </button>
+            <span className="user-info">Welcome, {user?.name}</span>
+            <button onClick={logout} className="logout-button">
+              Logout
             </button>
           </div>
         </div>
       </header>
 
       <main className="dashboard-main">
-        {loading && !stats ? (
+        {loading && !stats && products.length === 0 ? (
           <div className="loading">Loading...</div>
         ) : (
           <>
@@ -253,7 +305,7 @@ const Dashboard = () => {
                   <option value="">All Brands</option>
                   {brands.map((brand) => (
                     <option key={brand} value={brand}>
-                      {brand}
+                      {getDisplayBrand(brand)}
                     </option>
                   ))}
                 </select>
@@ -268,20 +320,12 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* Brand Info Display */}
-            {filters.brand && (
-              <div className="brand-info-display">
-                <h3>Total products in {filters.brand} Watches: {pagination.total}</h3>
-              </div>
-            )}
-
             <InventoryTable
               products={products}
               onView={handleViewProduct}
               onEdit={handleEditProduct}
-              onDelete={handleDeleteProduct}
-              loading={loading}
-              pagination={pagination}
+              onDelete={handleDeleteClick}
+              loading={productsLoading}
             />
 
             {pagination.pages > 1 && (
@@ -315,11 +359,18 @@ const Dashboard = () => {
           mode={modalMode}
           onClose={handleModalClose}
           onSave={handleModalClose}
+          brands={brands}
         />
       )}
+
+      <DeleteConfirmModal
+        isOpen={showDeleteConfirm}
+        onClose={handleCancelDelete}
+        onConfirm={handleConfirmDelete}
+        product={deleteProduct}
+      />
     </div>
   )
 }
 
 export default Dashboard
-

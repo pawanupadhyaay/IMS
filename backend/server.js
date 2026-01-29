@@ -1,15 +1,14 @@
 const express = require("express");
 const cors = require("cors");
-const path = require("path");
 const dotenv = require("dotenv");
 const connectDB = require("./config/database");
 const errorHandler = require("./middleware/errorHandler");
+const DashboardStats = require("./models/DashboardStats");
+const { Product } = require("./models/Product");
+const { recomputeDashboardStats } = require("./utils/recomputeDashboardStats");
 
 // Load env vars
 dotenv.config();
-
-// Connect to database
-connectDB();
 
 // Initialize app
 const app = express();
@@ -19,18 +18,20 @@ app.use(cors({
   origin: process.env.FRONTEND_URL || "http://localhost:5173",
   credentials: true,
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
 
-// Serve static files from uploads directory
-app.use('/uploads', express.static(path.join(__dirname, 'backend/uploads')));
+// Enable response compression for faster API responses
+const compression = require("compression");
+app.use(compression());
+
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: false, limit: "10mb" }));
 
 // Routes
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/products", require("./routes/productRoutes"));
 app.use("/api/dashboard", require("./routes/dashboardRoutes"));
 app.use("/api/export", require("./routes/exportRoutes"));
-app.use("/api/history", require("./routes/historyRoutes"));
+app.use("/api/activity-logs", require("./routes/activityLogRoutes"));
 
 // Health check
 app.get("/api/health", (req, res) => {
@@ -45,48 +46,45 @@ app.get("/api/test/databases", testController.listDatabases);
 // Error handler
 app.use(errorHandler);
 
-// Start server
-const PORT = process.env.PORT || 5000;
+async function startServer() {
+  // Connect to database first (so bootstrap queries are safe)
+  await connectDB();
 
-// Start server even if MongoDB connection fails (for development)
-const server = app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-  console.log(`✅ API available at http://localhost:${PORT}/api`);
-  console.log(`\n⚠️  Make sure MongoDB is running and MONGODB_URI is set in .env`);
-});
+  // Start server
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(`✅ Server running on port ${PORT}`);
+    console.log(`📍 Health check: http://localhost:${PORT}/api/health`);
+    console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || "http://localhost:5173"}`);
 
-// Handle port already in use error gracefully
-server.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`\n❌ Port ${PORT} is already in use!`);
-    console.log(`\n💡 Solutions:`);
-    console.log(`   1. Kill the process using port ${PORT}:`);
-    console.log(`      Windows: netstat -ano | findstr :${PORT}`);
-    console.log(`      Then: taskkill /PID <PID> /F`);
-    console.log(`   2. Or change PORT in .env file to a different port`);
-    console.log(`\n🔄 Trying to find and kill the process...`);
-    
-    // Try to find and suggest killing the process
-    const { exec } = require('child_process');
-    exec(`netstat -ano | findstr :${PORT}`, (error, stdout) => {
-      if (stdout) {
-        const lines = stdout.trim().split('\n');
-        const pids = new Set();
-        lines.forEach(line => {
-          const match = line.match(/\s+(\d+)\s*$/);
-          if (match) pids.add(match[1]);
-        });
-        if (pids.size > 0) {
-          console.log(`\n📋 Found processes using port ${PORT}:`);
-          Array.from(pids).forEach(pid => {
-            console.log(`   PID: ${pid}`);
-            console.log(`   Kill command: taskkill /PID ${pid} /F`);
-          });
-        }
+    // One-time bootstrap (non-blocking):
+    // If stats doc is default zeros but products exist, recompute in background.
+    setImmediate(async () => {
+      try {
+        const stats = await DashboardStats.getStats();
+        const isAllZero =
+          (stats.totalProducts || 0) === 0 &&
+          (stats.totalStock || 0) === 0 &&
+          (stats.totalStoreValue || 0) === 0 &&
+          (stats.outOfStockCount || 0) === 0;
+
+        if (!isAllZero) return;
+
+        const productsCount = await Product.estimatedDocumentCount();
+        if (productsCount === 0) return;
+
+        console.log("🔄 Bootstrapping dashboard stats from existing products...");
+        await recomputeDashboardStats();
+        console.log("✅ Dashboard stats bootstrapped.");
+      } catch (e) {
+        console.error("❌ Dashboard stats bootstrap failed:", e);
       }
     });
-  } else {
-    console.error(`\n❌ Server error:`, err);
-  }
+  });
+}
+
+startServer().catch((e) => {
+  console.error("❌ Failed to start server:", e);
+  process.exit(1);
 });
 

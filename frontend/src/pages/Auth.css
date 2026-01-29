@@ -15,7 +15,6 @@
   max-width: 400px;
 }
 
-
 .auth-box h1 {
   text-align: center;
   color: #333;
@@ -106,5 +105,4 @@
 .auth-link a:hover {
   text-decoration: underline;
 }
-
 

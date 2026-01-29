@@ -5,12 +5,11 @@ const {
   getProduct,
   createProduct,
   updateProduct,
+  patchProduct,
   deleteProduct,
   getBrands,
-  uploadImages,
 } = require("../controllers/productController");
 const { protect } = require("../middleware/auth");
-const upload = require("../config/multer");
 
 // All routes are protected
 router.use(protect);
@@ -18,13 +17,9 @@ router.use(protect);
 router.get("/brands/list", getBrands);
 router.get("/", getProducts);
 router.get("/:id", getProduct);
-
-// Image upload route
-router.post("/upload-images", upload.array('images', 10), uploadImages);
-
-// Product CRUD routes (images are uploaded separately)
 router.post("/", createProduct);
 router.put("/:id", updateProduct);
+router.patch("/:id", patchProduct); // Optimized partial update endpoint
 router.delete("/:id", deleteProduct);
 
 module.exports = router;

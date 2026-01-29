@@ -67,18 +67,7 @@ const productSchema = new mongoose.Schema(
       },
     },
     images: {
-      type: [
-        {
-          url: {
-            type: String,
-            default: "",
-          },
-          altText: {
-            type: String,
-            default: "",
-          },
-        },
-      ],
+      type: [String],
       default: [],
     },
     image: {
@@ -97,12 +86,26 @@ const productSchema = new mongoose.Schema(
   }
 );
 
-const Product = mongoose.model("Product", productSchema);
+// Create optimized indexes for performance at scale (10k-100k+ products)
+// Unique index on SKU (sparse - allows null/empty but unique values)
+productSchema.index({ sku: 1 }, { unique: true, sparse: true });
 
-// Create indexes for better query performance
-Product.collection.createIndex({ brand: 1 });
-Product.collection.createIndex({ category: 1 });
-Product.collection.createIndex({ createdAt: -1 });
+// Single field indexes for filtering
+productSchema.index({ brand: 1 });
+productSchema.index({ category: 1 });
+productSchema.index({ inventory: 1 });
+productSchema.index({ price: 1 });
+productSchema.index({ createdAt: -1 });
+
+// Compound indexes for common query patterns
+productSchema.index({ brand: 1, createdAt: -1 });
+productSchema.index({ category: 1, inventory: 1 });
+productSchema.index({ brand: 1, category: 1 });
+
+// Text index for search (if needed for full-text search)
+// productSchema.index({ brand: 'text', sku: 'text', category: 'text', description: 'text' });
+
+const Product = mongoose.model("Product", productSchema);
 
 function validateProduct(product) {
   const schema = Joi.object({
@@ -113,6 +116,7 @@ function validateProduct(product) {
     inventory: Joi.number().optional(),
     price: Joi.number().optional(),
     description: Joi.string().allow("").optional(),
+    images: Joi.array().items(Joi.string().allow("")).optional(),
     metafields: Joi.object({
       caseMaterial: Joi.string().allow("").optional(),
       dialColor: Joi.string().allow("").optional(),
@@ -121,18 +125,6 @@ function validateProduct(product) {
       movement: Joi.string().allow("").optional(),
       gender: Joi.string().allow("").optional(),
       caseSize: Joi.string().allow("").optional(),
-    }).optional(),
-    images: Joi.array().items(
-      Joi.object({
-        _id: Joi.string().optional(),
-        url: Joi.string().allow("").optional(),
-        altText: Joi.string().allow("").optional(),
-        filename: Joi.string().optional(),
-      })
-    ).optional(),
-    image: Joi.object({
-      url: Joi.string().allow("").optional(),
-      altText: Joi.string().allow("").optional(),
     }).optional(),
   });
 

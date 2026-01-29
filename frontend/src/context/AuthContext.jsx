@@ -64,16 +64,7 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
-  const logout = async () => {
-    try {
-      // Call backend logout endpoint to log the activity
-      await api.post('/auth/logout')
-    } catch (error) {
-      console.error('Logout API error:', error)
-      // Continue with local logout even if API fails
-    }
-
-    // Clear local state
+  const logout = () => {
     localStorage.removeItem('token')
     setToken(null)
     setUser(null)

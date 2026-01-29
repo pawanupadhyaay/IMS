@@ -4,7 +4,7 @@ import PrivateRoute from './components/PrivateRoute'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
-import History from './pages/History'
+import ActivityHistory from './pages/ActivityHistory'
 import './App.css'
 
 function App() {
@@ -23,10 +23,10 @@ function App() {
             }
           />
           <Route
-            path="/history"
+            path="/activity-history"
             element={
               <PrivateRoute>
-                <History />
+                <ActivityHistory />
               </PrivateRoute>
             }
           />

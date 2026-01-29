@@ -1,0 +1,29 @@
+import { useState, useEffect } from 'react'
+
+/**
+ * Hook to detect screen size for conditional rendering
+ * Returns true if screen width is <= 768px (mobile)
+ */
+export const useMediaQuery = (query) => {
+  const [matches, setMatches] = useState(false)
+
+  useEffect(() => {
+    const media = window.matchMedia(query)
+    if (media.matches !== matches) {
+      setMatches(media.matches)
+    }
+    const listener = () => setMatches(media.matches)
+    media.addEventListener('change', listener)
+    return () => media.removeEventListener('change', listener)
+  }, [matches, query])
+
+  return matches
+}
+
+/**
+ * Convenience hook for mobile detection
+ */
+export const useIsMobile = () => {
+  return useMediaQuery('(max-width: 768px)')
+}
+

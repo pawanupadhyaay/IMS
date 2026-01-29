@@ -1,0 +1,118 @@
+.activity-table-container {
+  overflow-x: auto;
+}
+
+.activity-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.activity-table thead {
+  background: #f8f9fa;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.activity-table th {
+  padding: 1rem;
+  text-align: left;
+  font-weight: 600;
+  color: #333;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.activity-table tbody tr {
+  border-bottom: 1px solid #f0f0f0;
+  transition: background-color 0.2s;
+}
+
+.activity-table tbody tr:hover {
+  background-color: #f8f9fa;
+}
+
+.activity-table td {
+  padding: 1rem;
+  color: #333;
+}
+
+.table-cell-brand {
+  font-weight: 500;
+}
+
+.table-cell-sku {
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.action-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.badge-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.badge-created {
+  background: #d4edda;
+  color: #155724;
+}
+
+.badge-updated {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.badge-deleted {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.badge-default {
+  background: #e9ecef;
+  color: #495057;
+}
+
+.admin-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.admin-name {
+  font-weight: 500;
+  color: #333;
+}
+
+.admin-email {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.table-cell-timestamp {
+  color: #666;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 1200px) {
+  .activity-table {
+    font-size: 0.85rem;
+  }
+
+  .activity-table th,
+  .activity-table td {
+    padding: 0.75rem;
+  }
+}
+

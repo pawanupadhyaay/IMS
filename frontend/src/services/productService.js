@@ -20,6 +20,12 @@ export const updateProduct = async (id, productData) => {
   return response.data
 }
 
+// Optimized partial update - only send changed fields
+export const patchProduct = async (id, partialData) => {
+  const response = await api.patch(`/products/${id}`, partialData)
+  return response.data
+}
+
 export const deleteProduct = async (id) => {
   const response = await api.delete(`/products/${id}`)
   return response.data

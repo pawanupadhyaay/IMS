@@ -1,0 +1,77 @@
+.mobile-activity-card {
+  background: white;
+  border-radius: 12px;
+  padding: 1.25rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e0e0e0;
+}
+
+.mobile-activity-badge {
+  margin-bottom: 0.75rem;
+}
+
+.action-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.badge-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.action-created {
+  background: #d4edda;
+  color: #155724;
+}
+
+.action-updated {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.action-deleted {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.action-default {
+  background: #e9ecef;
+  color: #495057;
+}
+
+.mobile-activity-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.activity-brand {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.activity-sku {
+  font-size: 0.9375rem;
+  color: #666;
+  font-family: 'Courier New', monospace;
+}
+
+.activity-admin {
+  font-size: 0.9375rem;
+  color: #666;
+  margin-top: 0.25rem;
+}
+
+.activity-timestamp {
+  font-size: 0.875rem;
+  color: #999;
+  margin-top: 0.25rem;
+}
+

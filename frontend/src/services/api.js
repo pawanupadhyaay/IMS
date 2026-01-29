@@ -1,13 +1,19 @@
 import axios from 'axios'
 
+// Production backend URL
+const PRODUCTION_API_URL = 'https://ims-3l5iv.ondigitalocean.app'
+
+// Use environment variable if available, otherwise use production URL
+const baseURL = import.meta.env.VITE_API_URL || PRODUCTION_API_URL
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: baseURL,
   headers: {
     'Content-Type': 'application/json',
   },
 })
 
-// Add request interceptor to set token dynamically on each request
+// Request interceptor (token)
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token')
@@ -16,26 +22,18 @@ api.interceptors.request.use(
     }
     return config
   },
-  (error) => {
-    return Promise.reject(error)
-  }
+  (error) => Promise.reject(error)
 )
 
-// Add response interceptor to handle errors globally
+// Response interceptor
 api.interceptors.response.use(
-  (response) => {
-    return response
-  },
+  (response) => response,
   (error) => {
-    // Log error for debugging
     if (error.response) {
-      // Server responded with error status
       console.error('API Error:', error.response.status, error.response.data)
     } else if (error.request) {
-      // Request made but no response received
       console.error('API Error: No response received', error.request)
     } else {
-      // Error in setting up request
       console.error('API Error:', error.message)
     }
     return Promise.reject(error)
@@ -43,4 +41,3 @@ api.interceptors.response.use(
 )
 
 export default api
-
